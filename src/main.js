@@ -21,7 +21,7 @@ const barsEl = document.getElementById('bars');
 // Limiar minimo p/ TROCAR o label exibido — evita "piscar" entre classes empatadas
 // (a suavizacao temporal e no worker->main; aqui e so histerese de exibicao). Relatorio secao 4.
 const SWITCH_THRESHOLD = 0.4;
-const FACE_SIZE = 64; // input do emotion-ferplus
+const FACE_SIZE = 224; // input do enet_b0_8_best_afew (EfficientNet-B0)
 
 const smoother = new EmaSmoother(0.6);
 

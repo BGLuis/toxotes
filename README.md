@@ -4,9 +4,10 @@ Câmera aberta na tela + *label* dizendo a emoção do rosto. **100% client-side
 *frame* sai da máquina, nenhum *backend*.
 
 - **Detecção facial**: MediaPipe BlazeFace (*short-range*), *on-device*, na *main thread*.
-- **Classificação de emoção**: [`emotion-ferplus`](https://github.com/onnx/models/tree/main/validated/vision/body_analysis/emotion_ferplus)
-  (ONNX Model Zoo, licença **MIT**), quantizado INT8, via **ONNX Runtime Web** num **Web Worker**,
-  em WebGPU quando disponível e WebAssembly (SIMD + *threads*) como *fallback*.
+- **Classificação de emoção**: [`enet_b0_8_best_afew`](https://github.com/HSE-asavchenko/face-emotion-recognition)
+  (EfficientNet-B0, via a biblioteca [`hsemotion-onnx`](https://github.com/av-savchenko/hsemotion-onnx),
+  código licença **Apache-2.0**), via **ONNX Runtime Web** num **Web Worker**, em WebGPU quando
+  disponível e WebAssembly (SIMD + *threads*) como *fallback*.
 - **Saída** no formato do Amazon Rekognition `DetectFaces`: `[{ type, confidence }]` ordenado
   por confiança. O Rekognition entra **só como referência de contrato** — nenhuma chamada à AWS.
 
@@ -57,9 +58,9 @@ Confirme no *console*: `crossOriginIsolated` deve ser `true`.
 
 ## Taxonomia — 7 classes
 
-O `emotion-ferplus` tem 8 saídas (FER+ = FER-2013 + `contempt`). Expomos **7**, mapeadas para
-o vocabulário do Rekognition; `contempt` é descartado e a distribuição é renormalizada
-(`src/emotions.js`). Nunca emitimos `CONFUSED` nem `UNKNOWN`.
+O `enet_b0_8_best_afew` tem 8 saídas (mesmo vocabulário-base do FER-2013 + `contempt`, herdado
+do FER+). Expomos **7**, mapeadas para o vocabulário do Rekognition; `contempt` é descartado e
+a distribuição é renormalizada (`src/emotions.js`). Nunca emitimos `CONFUSED` nem `UNKNOWN`.
 
 | Rekognition | origem FER+ |
 |---|---|
@@ -109,7 +110,7 @@ Primeira visita, depois **cache-first** via *service worker* (`public/sw.js`) pa
 
 | Artefato | Tamanho | Comprimido (gzip) |
 |---|---|---|
-| `emotion-ferplus-int8.onnx` | 19 MB | ~18 MB (já quantizado) |
+| `enet_b0_8_best_afew.onnx` | 15,3 MB (FP32, não quantizado) | ~14 MB |
 | runtime ONNX — `ort-wasm-simd-threaded.jsep.wasm` (caminho webgpu) | 27 MB | ~6,5 MB |
 | runtime ONNX — `ort-wasm-simd-threaded.wasm` (caminho wasm) | 14 MB | ~5 MB |
 | MediaPipe `vision_wasm_internal.wasm` | 11 MB | ~4 MB |
@@ -117,8 +118,9 @@ Primeira visita, depois **cache-first** via *service worker* (`public/sw.js`) pa
 | app (JS+CSS+worker) | ~550 KB | ~180 KB |
 
 Só **uma** das runtimes ONNX é buscada em tempo de execução (jsep se há adapter WebGPU,
-senão a `wasm`). O modelo de emoção é o gargalo de *download* — trocar por um FER menor com
-licença compatível é a otimização óbvia (ver *report*, risco 1).
+senão a `wasm`). O modelo de emoção é o gargalo de *download*; como não está quantizado,
+quantizar para INT8 (como o `emotion-ferplus` anterior já vinha) é a otimização óbvia se o
+tamanho do *bundle* virar problema.
 
 ## Verificação — pendente (é manual e gráfica)
 
@@ -144,7 +146,19 @@ Reconhecimento de emoções tem **restrição regulatória e ética** (o EU AI A
 **expressão facial**, não estado emocional interno. Antes de adotar em produto, valide o
 contexto legal — ver *report*, risco 4.
 
+Além disso, modelos treinados em FER-2013/FER+/AffectNet têm um viés documentado na literatura
+("proxy bias"/"teeth hallucination" — ver [arXiv:2506.19079](https://arxiv.org/abs/2506.19079)):
+boca aberta e dentes visíveis são associados a `HAPPY` com alta confiança mesmo quando a
+expressão real é outra (choro intenso, careta). Este projeto **não** implementa nenhuma
+correção para isso — é uma limitação conhecida do estado da arte em FER, não um bug local.
+
 ## Licenças dos modelos
 
-- `emotion-ferplus-int8.onnx` — ONNX Model Zoo, **MIT**.
+- `enet_b0_8_best_afew.onnx` — código da biblioteca [`hsemotion-onnx`](https://github.com/av-savchenko/hsemotion-onnx)
+  em **Apache-2.0**; pesos publicados em
+  [`HSE-asavchenko/face-emotion-recognition`](https://github.com/HSE-asavchenko/face-emotion-recognition),
+  treinados em **AffectNet + AFEW + VGAF**. O AffectNet é distribuído sob termos de **uso não
+  comercial** (proíbe exploração comercial de dados derivados) — irrelevante aqui, pois este é
+  um projeto de demonstração, não um produto. **Não redistribua/comercialize este projeto (ou
+  os pesos) sem revisar essa restrição primeiro.**
 - `blaze_face_short_range.tflite` — Google MediaPipe, **Apache-2.0**.

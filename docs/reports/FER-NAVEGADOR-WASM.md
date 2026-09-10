@@ -24,6 +24,21 @@
 > 3. **Runtime `.wasm` do ONNX servida de `/ort` (`ort.env.wasm.wasmPaths`), não via
 >    resolução de *asset* do *bundler*** — esta última travava a instanciação no *build* de
 >    produção dentro do Worker.
+> 4. **Modelo de emoção trocado de `emotion-ferplus` para `enet_b0_8_best_afew`
+>    (EfficientNet-B0, [`hsemotion-onnx`](https://github.com/av-savchenko/hsemotion-onnx)),
+>    2026-09-10.** Motivado por um caso observado no uso real: choro sendo classificado como
+>    `HAPPY` a ~65% de confiança — não é bug de ordenação de classes (conferido contra a
+>    documentação do modelo), e sim um viés documentado na literatura ("proxy bias"/"teeth
+>    hallucination", arXiv:2506.19079) presente em modelos FER2013/FER+ em geral. O modelo novo
+>    é treinado em AffectNet+AFEW+VGAF (dados "no mundo real", não posados), o que pode atenuar
+>    o viés, mas isso **não foi confirmado** — só testável ao vivo. Efeito colateral aceito: os
+>    pesos vêm de dataset de treino com licença de **uso não comercial** (o `emotion-ferplus`
+>    anterior era MIT, sem essa restrição); aceitável porque este projeto é uma demonstração,
+>    não um produto — ver `README.md`, seção "Licenças dos modelos". A acurácia publicada do
+>    modelo novo nos benchmarks dele (AffectNet/AFEW/VGAF, ~61–68%) é *menor* que a do
+>    `emotion-ferplus` no dele próprio (FER+, ~85%) — números não comparáveis diretamente
+>    porque os benchmarks têm dificuldade diferente (ver seção 6, risco 2, sobre acurácia de
+>    benchmark vs. webcam real).
 
 ---
 
