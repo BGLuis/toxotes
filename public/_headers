@@ -1,0 +1,20 @@
+# Deploy estatico (Cloudflare Pages / Netlify). Em dev/preview os mesmos headers vem do
+# vite.config.js. GitHub Pages NAO suporta headers customizados — ver relatorio secao 4.
+
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: cross-origin
+
+/models/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/mediapipe/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/ort/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Assets com hash no nome
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

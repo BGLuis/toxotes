@@ -1,0 +1,117 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0b0f14;
+  --fg: #e6edf3;
+  --muted: #8b98a5;
+  --accent: #38bdf8;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --err: #f87171;
+  --card: #131a22;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 {
+  font-size: 1.25rem;
+  margin: 0 0 12px;
+}
+
+.status {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 0.9rem;
+}
+.status[data-kind='ok']    { color: var(--ok); }
+.status[data-kind='error'] { color: var(--err); }
+.status[data-kind='info']  { color: var(--muted); }
+
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Espelho (efeito "selfie") apenas na EXIBIÇÃO. O worker recebe o frame nao espelhado,
+   entao a bounding box desenhada no overlay tambem precisa do mesmo flip para alinhar. */
+#cam,
+#overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(-1);
+}
+#cam { object-fit: cover; }
+
+.label {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(4px);
+}
+.label[data-kind='face'] { color: var(--accent); }
+.label[data-kind='none'] { color: var(--muted); font-weight: 500; }
+
+.bars {
+  margin-top: 16px;
+  display: grid;
+  gap: 6px;
+}
+.bar {
+  display: grid;
+  grid-template-columns: 92px 1fr 34px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.bar-name { text-align: right; letter-spacing: 0.03em; }
+.bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--card);
+  overflow: hidden;
+}
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+.bar-val { text-align: left; font-variant-numeric: tabular-nums; }
+
+.foot {
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+code {
+  background: var(--card);
+  padding: 1px 5px;
+  border-radius: 4px;
+}

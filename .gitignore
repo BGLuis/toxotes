@@ -1,0 +1,14 @@
+node_modules/
+dist/
+
+# Runtime copiada de node_modules por scripts/prepare-assets.mjs
+public/ort/
+public/mediapipe/
+
+# Modelos (public/models/) SAO versionados de proposito: sem eles nao ha o que rodar,
+# e a proposta e "nada baixado de fora".
+
+*.log
+.DS_Store
+.env*.local
+.env

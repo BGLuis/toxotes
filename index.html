@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>%F0%9F%99%82</text></svg>" />
+    <title>FER no navegador — WASM</title>
+  </head>
+  <body>
+    <main>
+      <h1>Emoção facial — 100% no navegador</h1>
+      <p id="status" class="status" data-kind="info">Inicializando…</p>
+
+      <div class="stage">
+        <video id="cam" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div id="label" class="label" data-kind="none">…</div>
+      </div>
+
+      <div id="bars" class="bars" aria-hidden="true"></div>
+
+      <p class="foot">
+        Detecção facial (MediaPipe BlazeFace) e classificação
+        (<code>emotion-ferplus</code> via ONNX Runtime Web) rodam num Web Worker, em
+        WebAssembly/WebGPU. Nenhum frame sai da máquina. O resultado é uma predição da
+        <strong>expressão facial</strong> — não do estado emocional interno da pessoa.
+      </p>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
