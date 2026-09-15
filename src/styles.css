@@ -77,10 +77,48 @@ h1 {
 .label[data-kind='face'] { color: var(--accent); }
 .label[data-kind='none'] { color: var(--muted); font-weight: 500; }
 
+/* Chip por rosto (suporte a multiplos rostos) — posicionado em % do estagio via JS,
+   com a mesma logica de espelhamento do restante da UI (ver main.js: renderChips). Fica
+   FORA do canvas espelhado, entao o texto nao precisa de flip manual. */
+.face-chip {
+  position: absolute;
+  transform: translateY(-100%);
+  margin-top: -6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--bg);
+  background: var(--chip-color, var(--accent));
+  pointer-events: none;
+}
+
 .bars {
   margin-top: 16px;
   display: grid;
+  gap: 16px;
+}
+
+.face-group {
+  display: grid;
   gap: 6px;
+}
+
+.face-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.face-group-heading::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chip-color, var(--accent));
 }
 .bar {
   display: grid;

@@ -3,7 +3,10 @@
 Câmera aberta na tela + *label* dizendo a emoção do rosto. **100% client-side**: nenhum
 *frame* sai da máquina, nenhum *backend*.
 
-- **Detecção facial**: MediaPipe BlazeFace (*short-range*), *on-device*, na *main thread*.
+- **Detecção facial**: MediaPipe BlazeFace (*short-range*), *on-device*, na *main thread*,
+  com suporte a **múltiplos rostos simultâneos** (até `MAX_FACES`, ver `src/face-detect.js`),
+  cada um rastreado entre *frames* por um *tracker* leve baseado em IoU (`src/face-tracker.js`)
+  para manter suavização temporal e *label* independentes por rosto.
 - **Classificação de emoção**: [`enet_b0_8_best_afew`](https://github.com/HSE-asavchenko/face-emotion-recognition)
   (EfficientNet-B0, via a biblioteca [`hsemotion-onnx`](https://github.com/av-savchenko/hsemotion-onnx),
   código licença **Apache-2.0**), via **ONNX Runtime Web** num **Web Worker**, em WebGPU quando
@@ -74,6 +77,15 @@ a distribuição é renormalizada (`src/emotions.js`). Nunca emitimos `CONFUSED`
 
 Sem rosto no *frame*: *label* = "nenhum rosto", lista vazia, inferência pulada.
 
+## Múltiplos rostos
+
+Cada rosto detectado ganha um *chip* flutuante (*label* + confiança) ancorado acima da sua
+caixa, e uma seção própria no painel de barras. Uma única sessão ONNX processa os recortes
+**em fila** — sequencialmente, não em paralelo — então a taxa de atualização por rosto cai
+conforme mais rostos aparecem em cena; para uma câmera comum isso ainda é imperceptível com
+2–3 rostos. `MAX_FACES` (`src/face-detect.js`) limita quantos rostos são classificados por
+*frame*, priorizando os maiores (mais próximos da câmera).
+
 ## Arquitetura
 
 ```
@@ -134,6 +146,8 @@ Ver `docs/reports/FER-NAVEGADOR-WASM.md` seção 5. Estado atual:
       requisições de vídeo/imagem saindo da página (validado com câmera sintética + Chrome
       DevTools; ver histórico de implementação).
 - [ ] **Rosto real**, luz de escritório, óculos, várias etnias — não validado.
+- [ ] **Múltiplos rostos reais em cena** (chips não se sobrepõem, ids estáveis) — a lógica
+      de *tracking* tem testes unitários (`FaceTracker`), mas não foi validada com câmera real.
 - [ ] **WebGPU de verdade** (máquina com GPU/adapter) — não validado aqui (ambiente de teste
       sem adapter caiu para `wasm`, como esperado).
 - [ ] Firefox / Safari (Technology Preview) — não validado.
