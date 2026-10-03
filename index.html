@@ -4,26 +4,27 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>%F0%9F%99%82</text></svg>" />
-    <title>FER no navegador — WASM</title>
+    <title>FER e Idade no navegador — WASM/WebGPU</title>
   </head>
   <body>
     <main>
-      <h1>Emoção facial — 100% no navegador</h1>
-      <p id="status" class="status" data-kind="info">Inicializando…</p>
+      <h1>Emoção facial e estimativa de idade — 100% no navegador</h1>
+      <p id="status" class="status" data-kind="info" aria-live="polite">Inicializando…</p>
 
       <div id="stage" class="stage">
         <video id="cam" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
-        <div id="label" class="label" data-kind="none">…</div>
+        <div id="label" class="label" data-kind="none" aria-live="polite">…</div>
       </div>
 
-      <div id="bars" class="bars" aria-hidden="true"></div>
+      <div id="bars" class="bars" aria-label="Distribuição de probabilidades das emoções"></div>
 
       <p class="foot">
-        Detecção facial (MediaPipe BlazeFace) e classificação
-        (<code>enet_b0_8_best_afew</code>, EfficientNet-B0, via ONNX Runtime Web) rodam num Web Worker, em
-        WebAssembly/WebGPU. Nenhum frame sai da máquina. O resultado é uma predição da
-        <strong>expressão facial</strong> — não do estado emocional interno da pessoa.
+        Detecção facial (MediaPipe BlazeFace), classificação de emoção
+        (<code>enet_b0_8_best_afew</code>, EfficientNet-B0) e estimativa de idade (<code>age-v1</code>)
+        via ONNX Runtime Web rodam num Web Worker, em WebAssembly/WebGPU. Nenhum frame sai da máquina.
+        O resultado é uma predição de atributos da <strong>expressão facial aparente</strong> — não do
+        estado emocional interno ou da identidade da pessoa.
       </p>
     </main>
 

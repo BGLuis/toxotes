@@ -1,21 +1,11 @@
-// F1 + glue — bootstrap na main thread: getUserMedia, loop por frame, deteccao facial
-// (MediaPipe), recorte do(s) rosto(s), e envio ao worker que classifica a emocao.
-//
-// Divisao de trabalho:
-//   main thread  : camera, deteccao facial (barata), recorte, overlay, texto do label,
-//                  suavizacao temporal (F6) e mapeamento p/ o contrato Rekognition
-//   Web Worker   : APENAS a inferencia de emocao (session.run) — a parte que travaria a UI
-//
-// Multiplos rostos: cada rosto detectado recebe um id estavel do FaceTracker (IoU
-// frame-a-frame) e seu proprio estado (`faces` abaixo) — smoother, stickyLabel e busy
-// independentes, para um rosto nao "roubar" o label/suavizacao de outro. Uma unica sessao
-// ONNX no worker processa os recortes em fila (ver worker.js); o `id` de cada mensagem
-// roteia a resposta de volta ao rosto certo, mesmo se ele ja tiver saido de cena.
+// Bootstrap na main thread: câmera (getUserMedia), detecção facial (MediaPipe BlazeFace),
+// rastreamento de múltiplos rostos (IoU), estabilização temporal, histerese robusta de emoções,
+// estimativa de idade (Rekognition AgeRange) e renderização na tela.
 
 import './styles.css';
 import { initFaceDetector, detectFace } from './face-detect.js';
-import { toRekognition } from './emotions.js';
-import { EmaSmoother } from './smoothing.js';
+import { toRekognition, toRekognitionAgeRange, EMOTION_METADATA } from './emotions.js';
+import { EmaSmoother, ScalarSmoother } from './smoothing.js';
 import { FaceTracker } from './face-tracker.js';
 
 const video = document.getElementById('cam');
@@ -26,21 +16,34 @@ const labelEl = document.getElementById('label');
 const statusEl = document.getElementById('status');
 const barsEl = document.getElementById('bars');
 
-// Limiar minimo p/ TROCAR o label exibido — evita "piscar" entre classes empatadas
-// (a suavizacao temporal e no worker->main; aqui e so histerese de exibicao). Relatorio secao 4.
-const SWITCH_THRESHOLD = 0.4;
-const FACE_SIZE = 224; // input do enet_b0_8_best_afew (EfficientNet-B0)
+// Limiar e histerese para troca de rótulo sem flicker
+const SWITCH_DELTA = 0.10;  // Vantagem mínima necessária sobre a classe fixada atual
+const SWITCH_FRAMES = 6;    // Persistência mínima consecutiva (~200-300 ms)
+const FACE_SIZE = 224;      // input do enet_b0_8_best_afew (EfficientNet-B0)
 const FACE_COLORS = ['#38bdf8', '#f472b6', '#34d399', '#fbbf24', '#a78bfa', '#fb923c'];
 
 const tracker = new FaceTracker();
-/** @type {Map<number, { box: object, smoother: EmaSmoother, stickyLabel: string|null, busy: boolean, emotions: object[] }>} */
+
+/**
+ * @type {Map<number, {
+ *   box: object,
+ *   smoother: EmaSmoother,
+ *   ageSmoother: ScalarSmoother,
+ *   stickyLabel: string|null,
+ *   candidateLabel: string|null,
+ *   candidateFrames: number,
+ *   ageRange: object|null,
+ *   busy: boolean,
+ *   emotions: object[]
+ * }>}
+ */
 const faces = new Map();
 const chipEls = new Map(); // id -> elemento .face-chip
 
 let worker = null;
 let faceDelegate = null;
 let lastTs = 0;
-let lastVisible = []; // ultimo [{id, box}] visto — resultados assincronos do worker redesenham a partir dele
+let lastVisible = []; // último [{id, box}] visto
 
 function setStatus(text, kind = 'info') {
   statusEl.textContent = text;
@@ -62,7 +65,6 @@ async function boot() {
   }
 
   if ('serviceWorker' in navigator) {
-    // F6 — cache-first para /models, /mediapipe e /assets: nao re-baixa a cada visita.
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
@@ -87,7 +89,7 @@ async function boot() {
   overlay.width = video.videoWidth;
   overlay.height = video.videoHeight;
 
-  setStatus('Carregando modelos (detecção + emoção)…');
+  setStatus('Carregando modelos (detecção + emoção + idade)…');
   try {
     faceDelegate = await initFaceDetector();
   } catch (err) {
@@ -101,7 +103,10 @@ function onWorkerMessage(ev) {
   const msg = ev.data;
   switch (msg.type) {
     case 'ready':
-      setStatus(`Pronto — rosto em ${faceDelegate}, emoção em ${msg.ep.toUpperCase()}.`, 'ok');
+      setStatus(
+        `Pronto — rosto em ${faceDelegate}, emoção em ${msg.ep.toUpperCase()}, idade em ${(msg.ageEp || 'WASM').toUpperCase()}.`,
+        'ok'
+      );
       scheduleNextFrame();
       break;
     case 'init-error':
@@ -109,14 +114,46 @@ function onWorkerMessage(ev) {
       break;
     case 'result': {
       const face = faces.get(msg.id);
-      if (!face) break; // rosto ja saiu de cena antes da resposta chegar — descarta
+      if (!face) break; // rosto já saiu de cena antes da resposta chegar — descarta
       face.busy = false;
       if (msg.error) console.warn('[fer] frame:', msg.id, msg.error);
+
+      if (msg.age != null) {
+        const smoothedAge = face.ageSmoother.push(msg.age);
+        face.ageRange = toRekognitionAgeRange(smoothedAge);
+      }
+
       if (msg.probs) {
         face.emotions = toRekognition(face.smoother.push(msg.probs));
         const top = face.emotions[0];
-        if (top && (top.confidence >= SWITCH_THRESHOLD || face.stickyLabel === null)) {
-          face.stickyLabel = top.type;
+        if (top) {
+          if (!face.stickyLabel) {
+            face.stickyLabel = top.type;
+            face.candidateLabel = null;
+            face.candidateFrames = 0;
+          } else if (top.type !== face.stickyLabel) {
+            const stickyEntry = face.emotions.find((e) => e.type === face.stickyLabel);
+            const stickyConf = stickyEntry ? stickyEntry.confidence : 0;
+            if (top.confidence >= stickyConf + SWITCH_DELTA) {
+              if (top.type === face.candidateLabel) {
+                face.candidateFrames += 1;
+                if (face.candidateFrames >= SWITCH_FRAMES) {
+                  face.stickyLabel = top.type;
+                  face.candidateLabel = null;
+                  face.candidateFrames = 0;
+                }
+              } else {
+                face.candidateLabel = top.type;
+                face.candidateFrames = 1;
+              }
+            } else {
+              face.candidateLabel = null;
+              face.candidateFrames = 0;
+            }
+          } else {
+            face.candidateLabel = null;
+            face.candidateFrames = 0;
+          }
         }
       }
       renderChips(lastVisible);
@@ -132,14 +169,12 @@ function scheduleNextFrame() {
   if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
     video.requestVideoFrameCallback(onFrame);
   } else {
-    // Fallback: rAF. Nao ideal (relatorio 2.6), mas mantem o loop vivo.
     requestAnimationFrame(() => onFrame(performance.now()));
   }
 }
 
 function onFrame(now) {
   if (video.readyState >= 2) {
-    // Timestamp estritamente crescente exigido pelo modo VIDEO do MediaPipe.
     const ts = Math.max(lastTs + 1, Math.round(now || performance.now()));
     lastTs = ts;
 
@@ -161,7 +196,7 @@ function onFrame(now) {
 
     for (const { id, box } of visible) {
       const face = faces.get(id);
-      if (face.busy) continue;
+      if (!face || face.busy) continue;
       face.busy = true;
       sendFaceFrame(id, box);
     }
@@ -178,7 +213,17 @@ function syncFaces(aliveIds, visible) {
     if (existing) {
       existing.box = box;
     } else {
-      faces.set(id, { box, smoother: new EmaSmoother(0.6), stickyLabel: null, busy: false, emotions: [] });
+      faces.set(id, {
+        box,
+        smoother: new EmaSmoother(0.6),
+        ageSmoother: new ScalarSmoother(0.85),
+        stickyLabel: null,
+        candidateLabel: null,
+        candidateFrames: 0,
+        ageRange: null,
+        busy: false,
+        emotions: [],
+      });
     }
   }
 }
@@ -193,7 +238,7 @@ async function sendFaceFrame(id, box) {
     worker.postMessage({ type: 'frame', id, bitmap }, [bitmap]);
   } catch {
     const face = faces.get(id);
-    if (face) face.busy = false; // descarta este frame
+    if (face) face.busy = false;
   }
 }
 
@@ -216,9 +261,7 @@ function setLabelCount(n) {
   }
 }
 
-// Chips flutuantes por rosto, ancorados acima de cada caixa. Ficam FORA do <canvas>
-// espelhado (CSS transform: scaleX(-1) em #cam/#overlay) — por isso a posicao e calculada
-// aqui em % ja espelhada, mas o texto em si nao precisa de nenhum flip manual.
+// Chips flutuantes por rosto, ancorados acima de cada caixa.
 function renderChips(visible) {
   const seen = new Set();
   for (const { id, box } of visible) {
@@ -236,10 +279,20 @@ function renderChips(visible) {
     const topPct = (box.y / video.videoHeight) * 100;
     chip.style.left = `${leftPct}%`;
     chip.style.top = `${topPct}%`;
+
     const top = face?.emotions?.[0];
-    chip.textContent = face?.stickyLabel
-      ? `${face.stickyLabel} · ${Math.round((top?.confidence ?? 0) * 100)}%`
-      : '…';
+    if (face?.stickyLabel) {
+      const activeEntry = face.emotions.find((e) => e.type === face.stickyLabel) || top;
+      const activeConf = Math.round((activeEntry?.confidence ?? 0) * 100);
+      const meta = EMOTION_METADATA[face.stickyLabel] || { pt: face.stickyLabel, icon: '🙂' };
+      let text = `${meta.icon} ${meta.pt} · ${activeConf}%`;
+      if (face.ageRange) {
+        text += ` · 🎂 ${face.ageRange.formatted}`;
+      }
+      chip.textContent = text;
+    } else {
+      chip.textContent = '…';
+    }
   }
   for (const [id, chip] of chipEls) {
     if (!seen.has(id)) {
@@ -249,13 +302,15 @@ function renderChips(visible) {
   }
 }
 
-function buildBarRow(e) {
+function buildBarRow(e, dominantType) {
+  const meta = EMOTION_METADATA[e.type] || { pt: e.type, icon: '' };
   const row = document.createElement('div');
   row.className = 'bar';
+  if (e.type === dominantType) row.classList.add('is-top');
 
   const name = document.createElement('span');
   name.className = 'bar-name';
-  name.textContent = e.type;
+  name.textContent = `${meta.icon} ${meta.pt}`;
 
   const track = document.createElement('span');
   track.className = 'bar-track';
@@ -266,7 +321,7 @@ function buildBarRow(e) {
 
   const val = document.createElement('span');
   val.className = 'bar-val';
-  val.textContent = Math.round(e.confidence * 100);
+  val.textContent = `${Math.round(e.confidence * 100)}%`;
 
   row.append(name, track, val);
   return row;
@@ -285,10 +340,12 @@ function renderBars(visible) {
       const heading = document.createElement('div');
       heading.className = 'face-group-heading';
       heading.style.setProperty('--chip-color', colorForId(id));
-      heading.textContent = `Rosto ${id}`;
+      const ageSuffix = face?.ageRange ? ` · 🎂 ${face.ageRange.formatted}` : '';
+      heading.textContent = `Rosto ${id}${ageSuffix}`;
       group.append(heading);
     }
-    group.append(...(face?.emotions ?? []).map(buildBarRow));
+    const domType = face?.stickyLabel;
+    group.append(...(face?.emotions ?? []).map((e) => buildBarRow(e, domType)));
     return group;
   });
   barsEl.replaceChildren(...groups);

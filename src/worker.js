@@ -1,29 +1,31 @@
-// F5 — a inferencia de emocao (a parte cara: CNN) roda aqui, fora da main thread.
-// Nunca chamamos session.run na main thread (relatorio 2.8).
+// Inferência neural (FER + Idade) executada fora da main thread.
 //
-// A deteccao facial (MediaPipe) fica na main thread — ver src/face-detect.js para o porque.
-// Este worker recebe um ImageBitmap 224x224 por rosto (ja recortado pela main thread) e
-// devolve o vetor de probabilidades bruto; a suavizacao temporal e o mapeamento p/ o
-// contrato Rekognition acontecem na main thread (src/smoothing.js, src/emotions.js).
+// A detecção facial (MediaPipe) fica na main thread (src/face-detect.js).
+// Este worker recebe um ImageBitmap por rosto (já recortado pela main thread) e executa:
+//   1. Emoção (enet_b0_8_best_afew): a cada frame recebido.
+//   2. Idade (age-v1.onnx): amortizada a cada ~15 frames (~1 Hz) por rosto.
 //
-// Multiplos rostos: uma unica sessao ONNX processa os recortes em FILA (nao concorrente —
-// session.run nao e seguro para chamadas sobrepostas na mesma sessao). Cada mensagem carrega
-// o `id` do rosto (atribuido pelo FaceTracker na main thread) para a resposta poder ser
-// roteada de volta ao rosto certo, mesmo com varios recortes pendentes.
+// Múltiplos rostos: uma única sessão ONNX processa os recortes em FILA (não concorrente).
+// Cada mensagem carrega o `id` do rosto (atribuído pelo FaceTracker na main thread) para
+// a resposta poder ser roteada de volta ao rosto certo.
 
 import { initFer, classify } from './fer.js';
+import { initAge, classifyAge } from './age.js';
 
 let ready = false;
 let queue = Promise.resolve();
+const ageByFaceId = new Map();
+const frameCounts = new Map();
+const AGE_INTERVAL_FRAMES = 15; // ~1 Hz
 
 self.onmessage = async (ev) => {
   const msg = ev.data;
 
   if (msg.type === 'init') {
     try {
-      const ep = await initFer();
+      const [ferEp, ageEp] = await Promise.all([initFer(), initAge()]);
       ready = true;
-      self.postMessage({ type: 'ready', ep });
+      self.postMessage({ type: 'ready', ep: ferEp, ageEp });
     } catch (err) {
       self.postMessage({ type: 'init-error', error: String(err?.message || err) });
     }
@@ -36,8 +38,6 @@ self.onmessage = async (ev) => {
       bitmap.close?.();
       return;
     }
-    // Encadeia no fim da fila em vez de `await` direto — assim mensagens seguintes sao
-    // aceitas de imediato, mas a inferencia em si roda uma de cada vez.
     queue = queue.then(() => classifyOne(id, bitmap));
   }
 };
@@ -45,9 +45,22 @@ self.onmessage = async (ev) => {
 async function classifyOne(id, bitmap) {
   try {
     const probs = await classify(bitmap);
-    self.postMessage({ type: 'result', id, probs });
+
+    const count = (frameCounts.get(id) || 0) + 1;
+    frameCounts.set(id, count);
+
+    if (!ageByFaceId.has(id) || count % AGE_INTERVAL_FRAMES === 0) {
+      try {
+        const age = await classifyAge(bitmap);
+        ageByFaceId.set(id, age);
+      } catch (ageErr) {
+        console.warn('[worker] erro na estimativa de idade:', ageErr);
+      }
+    }
+
+    self.postMessage({ type: 'result', id, probs, age: ageByFaceId.get(id) ?? null });
   } catch (err) {
-    self.postMessage({ type: 'result', id, probs: null, error: String(err?.message || err) });
+    self.postMessage({ type: 'result', id, probs: null, age: null, error: String(err?.message || err) });
   } finally {
     bitmap.close?.();
   }

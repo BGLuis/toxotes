@@ -49,4 +49,20 @@ const mp = await copyMatching(
   (n) => n.startsWith('vision_wasm_internal.') || n.startsWith('vision_wasm_nosimd_internal.'),
 );
 
+// Modelo de idade (age-v1.onnx, CC0-1.0). Se nao estiver presente, baixa do repositorio.
+const AGE_MODEL_PATH = at('public/models/age-v1.onnx');
+if (!existsSync(AGE_MODEL_PATH)) {
+  console.log('baixando modelo de idade (age-v1.onnx)...');
+  const res = await fetch(
+    'https://raw.githubusercontent.com/mowshon/age-and-gender/master/src/age_and_gender/models/age-v1.onnx'
+  );
+  if (!res.ok) {
+    throw new Error(`falha ao baixar age-v1.onnx: ${res.statusText}`);
+  }
+  const { writeFile } = await import('node:fs/promises');
+  await mkdir(at('public/models'), { recursive: true });
+  await writeFile(AGE_MODEL_PATH, Buffer.from(await res.arrayBuffer()));
+  console.log('modelo de idade pronto: public/models/age-v1.onnx');
+}
+
 console.log(`assets prontos: public/ort (${ort} arquivos), public/mediapipe/wasm (${mp} arquivos)`);

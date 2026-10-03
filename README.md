@@ -11,10 +11,14 @@ Câmera aberta na tela + *label* dizendo a emoção do rosto. **100% client-side
   (EfficientNet-B0, via a biblioteca [`hsemotion-onnx`](https://github.com/av-savchenko/hsemotion-onnx),
   código licença **Apache-2.0**), via **ONNX Runtime Web** num **Web Worker**, em WebGPU quando
   disponível e WebAssembly (SIMD + *threads*) como *fallback*.
-- **Saída** no formato do Amazon Rekognition `DetectFaces`: `[{ type, confidence }]` ordenado
-  por confiança. O Rekognition entra **só como referência de contrato** — nenhuma chamada à AWS.
+- **Estimativa de idade**: [`age-v1.onnx`](https://github.com/mowshon/age-and-gender) (licença **CC0-1.0**),
+  executada de forma amortizada (~1 Hz) por rosto no mesmo Web Worker via ONNX Runtime Web.
+- **Saída** no formato do Amazon Rekognition `DetectFaces`: `Emotions: [{ type, confidence }]` e
+  `AgeRange: { Low, High }`. O Rekognition entra **só como referência de contrato** — nenhuma chamada à AWS.
 
-Implementa [`docs/reports/FER-NAVEGADOR-WASM.md`](docs/reports/FER-NAVEGADOR-WASM.md).
+
+Implementa [`docs/reports/FER-NAVEGADOR-WASM.md`](docs/reports/FER-NAVEGADOR-WASM.md) e
+[`docs/reports/MELHORIAS-EMOCOES-E-IDADE.md`](docs/reports/MELHORIAS-EMOCOES-E-IDADE.md).
 
 ## Rodar
 
@@ -175,4 +179,6 @@ correção para isso — é uma limitação conhecida do estado da arte em FER, 
   comercial** (proíbe exploração comercial de dados derivados) — irrelevante aqui, pois este é
   um projeto de demonstração, não um produto. **Não redistribua/comercialize este projeto (ou
   os pesos) sem revisar essa restrição primeiro.**
+- `age-v1.onnx` — Cydral / Dlib / mowshon, **CC0-1.0** (Domínio Público).
 - `blaze_face_short_range.tflite` — Google MediaPipe, **Apache-2.0**.
+

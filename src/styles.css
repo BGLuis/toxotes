@@ -50,8 +50,7 @@ h1 {
   overflow: hidden;
 }
 
-/* Espelho (efeito "selfie") apenas na EXIBIÇÃO. O worker recebe o frame nao espelhado,
-   entao a bounding box desenhada no overlay tambem precisa do mesmo flip para alinhar. */
+/* Espelho (efeito "selfie") apenas na EXIBIÇÃO. */
 #cam,
 #overlay {
   position: absolute;
@@ -73,25 +72,33 @@ h1 {
   letter-spacing: 0.02em;
   background: rgba(0, 0, 0, 0.62);
   backdrop-filter: blur(4px);
+  pointer-events: none;
+  z-index: 5;
 }
 .label[data-kind='face'] { color: var(--accent); }
 .label[data-kind='none'] { color: var(--muted); font-weight: 500; }
 
-/* Chip por rosto (suporte a multiplos rostos) — posicionado em % do estagio via JS,
-   com a mesma logica de espelhamento do restante da UI (ver main.js: renderChips). Fica
-   FORA do canvas espelhado, entao o texto nao precisa de flip manual. */
+/* Chip flutuante por rosto (suporte a múltiplos rostos e estimativa de idade) */
 .face-chip {
   position: absolute;
   transform: translateY(-100%);
   margin-top: -6px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 700;
   white-space: nowrap;
-  color: var(--bg);
-  background: var(--chip-color, var(--accent));
+  color: var(--fg);
+  background: rgba(11, 15, 20, 0.85);
+  border: 1.5px solid var(--chip-color, var(--accent));
+  backdrop-filter: blur(8px);
   pointer-events: none;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transition: left 80ms linear, top 80ms linear;
 }
 
 .bars {
@@ -120,28 +127,60 @@ h1 {
   border-radius: 999px;
   background: var(--chip-color, var(--accent));
 }
+
 .bar {
   display: grid;
-  grid-template-columns: 92px 1fr 34px;
+  grid-template-columns: 120px 1fr 38px;
   align-items: center;
   gap: 10px;
   font-size: 0.82rem;
   color: var(--muted);
+  padding: 3px 6px;
+  border-radius: 6px;
+  transition: background 150ms ease, color 150ms ease;
 }
-.bar-name { text-align: right; letter-spacing: 0.03em; }
+
+.bar.is-top {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.bar-name {
+  text-align: right;
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .bar-track {
   height: 8px;
   border-radius: 999px;
   background: var(--card);
   overflow: hidden;
 }
+
 .bar-fill {
   display: block;
   height: 100%;
   background: var(--accent);
-  transition: width 120ms linear;
+  transition: width 120ms linear, background 150ms ease;
 }
-.bar-val { text-align: left; font-variant-numeric: tabular-nums; }
+
+.bar.is-top .bar-fill {
+  background: var(--ok);
+}
+
+.bar-val {
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+}
+.bar.is-top .bar-val {
+  font-weight: 700;
+  color: var(--fg);
+}
 
 .foot {
   margin-top: 24px;
