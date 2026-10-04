@@ -32,13 +32,24 @@ const TO_REKOGNITION = {
 // Dicionário de localização para Português (PT-BR) e ícones semânticos
 export const EMOTION_METADATA = {
   HAPPY:     { pt: 'Feliz',      icon: '😊' },
+  CALM:      { pt: 'Neutro(a)',  icon: '😌' },
+  SURPRISED: { pt: 'Surpreso(a)', icon: '😮' },
   SAD:       { pt: 'Triste',     icon: '😢' },
   ANGRY:     { pt: 'Bravo(a)',   icon: '😠' },
-  SURPRISED: { pt: 'Surpreso(a)', icon: '😮' },
-  DISGUSTED: { pt: 'Desgosto',   icon: '🤢' },
   FEAR:      { pt: 'Medo',       icon: '😨' },
-  CALM:      { pt: 'Neutro(a)',  icon: '😌' },
+  DISGUSTED: { pt: 'Desgosto',   icon: '🤢' },
 };
+
+// Ordem canônica e fixa de exibição na interface (as linhas permanecem sempre na mesma posição)
+export const CANONICAL_EMOTION_ORDER = [
+  'HAPPY',
+  'CALM',
+  'SURPRISED',
+  'SAD',
+  'ANGRY',
+  'FEAR',
+  'DISGUSTED',
+];
 
 /**
  * Converte o vetor de probabilidades do modelo no contrato do Rekognition:

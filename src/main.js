@@ -4,7 +4,7 @@
 
 import './styles.css';
 import { initFaceDetector, detectFace } from './face-detect.js';
-import { toRekognition, toRekognitionAgeRange, EMOTION_METADATA } from './emotions.js';
+import { toRekognition, toRekognitionAgeRange, EMOTION_METADATA, CANONICAL_EMOTION_ORDER } from './emotions.js';
 import { EmaSmoother, ScalarSmoother } from './smoothing.js';
 import { FaceTracker } from './face-tracker.js';
 
@@ -204,9 +204,51 @@ function onFrame(now) {
   scheduleNextFrame();
 }
 
+function createFaceDom(id) {
+  const group = document.createElement('div');
+  group.className = 'face-group';
+
+  const heading = document.createElement('div');
+  heading.className = 'face-group-heading';
+  heading.style.setProperty('--chip-color', colorForId(id));
+  group.append(heading);
+
+  const barRows = new Map();
+  // As linhas são criadas rigorosamente na ordem canônica fixa
+  for (const type of CANONICAL_EMOTION_ORDER) {
+    const meta = EMOTION_METADATA[type] || { pt: type, icon: '' };
+    const row = document.createElement('div');
+    row.className = 'bar';
+
+    const name = document.createElement('span');
+    name.className = 'bar-name';
+    name.textContent = `${meta.icon} ${meta.pt}`;
+
+    const track = document.createElement('span');
+    track.className = 'bar-track';
+    const fill = document.createElement('span');
+    fill.className = 'bar-fill';
+    fill.style.width = '0%';
+    track.append(fill);
+
+    const val = document.createElement('span');
+    val.className = 'bar-val';
+    val.textContent = '0%';
+
+    row.append(name, track, val);
+    group.append(row);
+    barRows.set(type, { row, fill, val });
+  }
+
+  return { group, heading, barRows };
+}
+
 function syncFaces(aliveIds, visible) {
-  for (const id of faces.keys()) {
-    if (!aliveIds.has(id)) faces.delete(id);
+  for (const [id, face] of faces.entries()) {
+    if (!aliveIds.has(id)) {
+      face.dom?.group.remove();
+      faces.delete(id);
+    }
   }
   for (const { id, box } of visible) {
     const existing = faces.get(id);
@@ -223,6 +265,7 @@ function syncFaces(aliveIds, visible) {
         ageRange: null,
         busy: false,
         emotions: [],
+        dom: createFaceDom(id),
       });
     }
   }
@@ -302,53 +345,51 @@ function renderChips(visible) {
   }
 }
 
-function buildBarRow(e, dominantType) {
-  const meta = EMOTION_METADATA[e.type] || { pt: e.type, icon: '' };
-  const row = document.createElement('div');
-  row.className = 'bar';
-  if (e.type === dominantType) row.classList.add('is-top');
-
-  const name = document.createElement('span');
-  name.className = 'bar-name';
-  name.textContent = `${meta.icon} ${meta.pt}`;
-
-  const track = document.createElement('span');
-  track.className = 'bar-track';
-  const fill = document.createElement('span');
-  fill.className = 'bar-fill';
-  fill.style.width = `${(e.confidence * 100).toFixed(1)}%`;
-  track.append(fill);
-
-  const val = document.createElement('span');
-  val.className = 'bar-val';
-  val.textContent = `${Math.round(e.confidence * 100)}%`;
-
-  row.append(name, track, val);
-  return row;
-}
-
 function renderBars(visible) {
   if (visible.length === 0) {
     barsEl.replaceChildren();
     return;
   }
-  const groups = visible.map(({ id }) => {
+
+  const multi = visible.length > 1;
+  const groupsToDisplay = [];
+
+  for (const { id } of visible) {
     const face = faces.get(id);
-    const group = document.createElement('div');
-    group.className = 'face-group';
-    if (visible.length > 1) {
-      const heading = document.createElement('div');
-      heading.className = 'face-group-heading';
-      heading.style.setProperty('--chip-color', colorForId(id));
-      const ageSuffix = face?.ageRange ? ` · 🎂 ${face.ageRange.formatted}` : '';
+    if (!face?.dom) continue;
+
+    const { group, heading, barRows } = face.dom;
+    if (multi) {
+      heading.style.display = 'flex';
+      const ageSuffix = face.ageRange ? ` · 🎂 ${face.ageRange.formatted}` : '';
       heading.textContent = `Rosto ${id}${ageSuffix}`;
-      group.append(heading);
+    } else {
+      heading.style.display = 'none';
     }
-    const domType = face?.stickyLabel;
-    group.append(...(face?.emotions ?? []).map((e) => buildBarRow(e, domType)));
-    return group;
-  });
-  barsEl.replaceChildren(...groups);
+
+    const confMap = new Map((face.emotions || []).map((e) => [e.type, e.confidence]));
+    const domType = face.stickyLabel;
+
+    // Atualiza apenas os valores no lugar fixo de cada linha, sem jamais trocar a ordem
+    for (const [type, { row, fill, val }] of barRows) {
+      const conf = confMap.get(type) ?? 0;
+      fill.style.width = `${(conf * 100).toFixed(1)}%`;
+      val.textContent = `${Math.round(conf * 100)}%`;
+      row.classList.toggle('is-top', type === domType);
+    }
+
+    groupsToDisplay.push(group);
+  }
+
+  const currentChildren = Array.from(barsEl.children);
+  const changed =
+    currentChildren.length !== groupsToDisplay.length ||
+    groupsToDisplay.some((g, i) => g !== currentChildren[i]);
+
+  if (changed) {
+    barsEl.replaceChildren(...groupsToDisplay);
+  }
 }
+
 
 boot();
